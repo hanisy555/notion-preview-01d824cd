@@ -1,0 +1,97 @@
+<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"/><meta name="viewport" content="width=device-width,initial-scale=1.0"/><script>
+(function(){
+  var __k="3434156f-fe14-47e7-9fdf-acfedf747d86";
+  var __a=null;
+  var __preload=null;
+  if(!__k)return;
+  var _f=window.fetch;
+  // S3 URL → file_key 추출 후 __a 매핑 lookup → assets/ 로컬 경로 치환
+  // 응답에 새 signed URL이 와도 같은 file_key면 같은 assets/ → 영구 작동
+  function patchUrls(data){
+    if(!__a)return data;
+    try{
+      var s=JSON.stringify(data);
+      // 응답 안의 모든 S3 URL을 정규식으로 찾고, file_key 추출 → 매핑 lookup
+      s=s.replace(/https:\/\/prod-files-secure\.s3\.amazonaws\.com\/[^"\s<>]+/g,function(url){
+        var m=url.match(/\.amazonaws\.com\/([^?\\]+)/);
+        if(!m)return url;
+        var key=m[1].replace(/\\u002F/g,"/");
+        return __a[key]||url;
+      });
+      return JSON.parse(s);
+    }catch(e){return data;}
+  }
+  function callMisiso(method,path,body){
+    return _f("https://misiso.com/api/notion/deploy-proxy",{
+      method:"POST",
+      headers:{"Content-Type":"application/json"},
+      body:JSON.stringify({deployKey:__k,path:path,method:method,body:body})
+    }).then(function(r){
+      var status=r.status;
+      return r.json().then(function(data){return {status:status,data:patchUrls(data)};});
+    });
+  }
+  // preload pattern — 페이지 로드와 병렬로 정적 fetch 호출 미리 시작
+  var __preloadCache={};
+  if(__preload){
+    for(var i=0;i<__preload.length;i++){
+      (function(c){
+        var key=c.method+":"+c.path+":"+(c.body?JSON.stringify(c.body):"");
+        __preloadCache[key]=callMisiso(c.method,c.path,c.body);
+      })(__preload[i]);
+    }
+  }
+  window.fetch=function(url,opts){
+    var u=typeof url==="string"?url:String(url);
+    if(!u.startsWith("/api/notion/"))return _f.apply(this,arguments);
+    var path=u.slice("/api/notion".length);
+    var method=(opts&&opts.method)||"GET";
+    var body;
+    try{body=opts&&opts.body?JSON.parse(opts.body):undefined;}catch(e){body=opts&&opts.body;}
+    var ck=method+":"+path+":"+(body?JSON.stringify(body):"");
+    var promise=__preloadCache[ck];
+    if(promise){delete __preloadCache[ck];}
+    else{promise=callMisiso(method,path,body);}
+    return promise.then(function(res){
+      return new Response(JSON.stringify(res.data),{
+        status:res.status,
+        headers:{"Content-Type":"application/json"}
+      });
+    });
+  };
+})();
+</script>
+<link rel="preconnect" href="https://misiso.com" crossorigin/>
+<meta property="og:type" content="website"/>
+<meta property="og:title" content="Notion Code Preview"/>
+<meta property="og:description" content="Built with Notion Code Previewer"/>
+<title>Notion Code Preview</title>
+<meta name="description" content="Built with Notion Code Previewer"/>
+<meta property="og:image" content="https://hanisy555.github.io/notion-preview-01d824cd/og-image-00u0mqvr.png"/>
+<meta property="og:image:width" content="1200"/>
+<meta property="og:image:height" content="630"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<meta name="twitter:image" content="https://hanisy555.github.io/notion-preview-01d824cd/og-image-00u0mqvr.png"/>
+<link rel="icon" href="data:image/svg+xml,%3Csvg%20xmlns%3D'http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg'%20viewBox%3D'0%200%2032%2032'%3E%3Crect%20width%3D'32'%20height%3D'32'%20rx%3D'6'%20fill%3D'%236366f1'%2F%3E%3Ctext%20x%3D'16'%20y%3D'22'%20text-anchor%3D'middle'%20font-size%3D'18'%20fill%3D'white'%20font-family%3D'sans-serif'%3EN%3C%2Ftext%3E%3C%2Fsvg%3E"/>
+<script src="https://cdn.tailwindcss.com"></script>
+</head><body><script>
+function calculate(answers) {
+  // answers: [+2, +1, -1, -2, ...] 길이 12
+  const sumA = answers.slice(0, 4).reduce((s, v) => s + v, 0);
+  const sumB = answers.slice(4, 8).reduce((s, v) => s + v, 0);
+  const sumC = answers.slice(8, 12).reduce((s, v) => s + v, 0);
+  // 합이 0일 경우 마지막 응답 부호 사용 (0 회피 — 중립 없음 원칙 보존)
+  const resolveZero = (sum, last) => sum === 0 ? (Math.sign(last) || 1) : sum;
+  const finalA = resolveZero(sumA, answers[3]);
+  const finalB = resolveZero(sumB, answers[7]);
+  const finalC = resolveZero(sumC, answers[11]);
+  const code =
+    (finalA > 0 ? 'T' : 'B') +
+    (finalB > 0 ? 'I' : 'O') +
+    (finalC > 0 ? 'S' : 'C');
+  // 절댓값 ≤1: 경계값 → 인접 유형 안내
+  const isBoundary = [sumA, sumB, sumC].some(s => Math.abs(s) <= 1);
+  return { code, sumA, sumB, sumC, isBoundary };
+}
+</script>
+</body></html>
